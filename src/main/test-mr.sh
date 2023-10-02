@@ -226,21 +226,33 @@ wait
 # test whether any worker or coordinator exits before the
 # task has completed (i.e., all output files have been finalized)
 rm -f mr-*
-
+wait_n() {
+    while true; do
+        for pid in "$@"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                return 0
+            fi
+        done
+        sleep 0.01
+    done
+}
 echo '***' Starting early exit test.
 
 DF=anydone$$
 rm -f $DF
 
 (maybe_quiet $TIMEOUT ../mrcoordinator ../pg*txt; touch $DF) &
-
+pid1=$!
 # give the coordinator time to create the sockets.
 sleep 1
 
 # start multiple workers.
 (maybe_quiet $TIMEOUT ../mrworker ../../mrapps/early_exit.so; touch $DF) &
+pid2=$!
 (maybe_quiet $TIMEOUT ../mrworker ../../mrapps/early_exit.so; touch $DF) &
+pid3=$!
 (maybe_quiet $TIMEOUT ../mrworker ../../mrapps/early_exit.so; touch $DF) &
+pid4=$!
 
 # wait for any of the coord or workers to exit.
 # `jobs` ensures that any completed old processes from other tests
@@ -256,7 +268,8 @@ then
 else
   # the -n causes wait to wait for just one child process,
   # rather than waiting for all to finish.
-  wait -n
+  wait_n "$pid1" "$pid2" "$pid3" "$pid4"
+  echo "one of coord or workers exited"
 fi
 
 rm -f $DF
@@ -267,6 +280,7 @@ sort mr-out* | grep . > mr-wc-all-initial
 
 # wait for remaining workers and coordinator to exit.
 wait
+echo "all of coord or workers exited"
 
 # compare initial and final outputs
 sort mr-out* | grep . > mr-wc-all-final
